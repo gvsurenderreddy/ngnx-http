@@ -12,9 +12,13 @@ const watch = require('watch')
  */
 class HttpServer extends NGN.Server {
   constructor (cfg) {
+    // General configuration
     cfg = cfg || {}
-    super()
 
+    // Instantiate super constructor
+    super(cfg)
+
+    // Private properties
     Object.defineProperties(this, {
       /**
        * @property {Object} app
@@ -26,6 +30,29 @@ class HttpServer extends NGN.Server {
         configurable: false,
         writable: false,
         value: express()
+      },
+
+      /**
+       * @cfg {number} [port=80/443]
+       * The port on which the server is listening.
+       * By default, this is `80`, or `443` if a TLS certifcate is specified.
+       */
+      port: {
+        enumerable: true,
+        configurable: false,
+        writable: false,
+        value: cfg.port || (this.crt !== null ? 443 : 80)
+      },
+
+      /**
+       * @cfg {string} [ip]
+       * The IP/NIC to listen on. By default, the server listens on all.
+       */
+      ip: {
+        enumerable: true,
+        configurable: false,
+        writable: false,
+        value: cfg.ip || '0.0.0.0'
       },
 
       /**
@@ -125,7 +152,18 @@ class HttpServer extends NGN.Server {
         enumerable: true,
         configurable: false,
         writable: true,
-        value: cfg.poweredby
+        value: cfg.poweredby || 'NGN'
+      },
+
+      /**
+       * @property {object} managedroutes
+       * The modules being monitored for route changes.
+       */
+      managedroutes: {
+        enumerable: false,
+        writable: true,
+        configurable: false,
+        value: {}
       },
 
       /**
@@ -231,10 +269,85 @@ class HttpServer extends NGN.Server {
   }
 
   start () {
+    this._starting = true
+    if (this.crt) {
+      let opts = {
+        certificate: this.certificate
+      }
+      if (this.certauthority) {
+        opts.ca = this.certauthority
+      }
+      if (this.privkey) {
+        opts.key = this.privkey
+      }
+      this.server = require('https').createServer(opts, this.app)
+    } else {
+      this.server = require('http').Server(this.app)
+    }
 
+    let me = this
+    this.server.listen(this.port, this.ip, function () {
+      me._running = true
+      me._starting = false
+      me.emit('start')
+    })
   }
 
   stop () {
+    this.server.on('stop', function () {
+      this._running = false
+      me.emit('stop')
+    })
+    this.server.stop()
+  }
+
+  /**
+   * @method createRoutes
+   * Add routes that are monitored.
+   * @param {string} filepath
+   * The path to the module containing the routes.
+   * This acts as a `require`. For example:
+   * ```js
+   * server.createRoutes('./myroutes.js')
+   * ```
+   * This is essentially the equivalent of:
+   * ```js
+   * require('./myroutes.js')(server.app)
+   * ```
+   * The primary difference is createRoutes associates
+   * a file with the route/s. When this file changes,
+   * the router will reload itself without restarting the
+   * process (hot reload).
+   *
+   * This can also accept a module object, but it will not be tracked.
+   * For example:
+   * ```js
+   * let mymod = require('./myroutes.js')
+   * server.createRoutes(mymod)
+   * ```
+   * The example above will still work, but it will not auto-refresh.
+   */
+  createRoutes (mod) {
+    if (typeof mod === 'string') {
+      if (!NGN.util.pathExists(path.resolve(mod))) {
+        if (path.extname(mod) !== '.js') {
+          mod = mod + '.js'
+        }
+        if (!NGN.util.pathExists(path.resolve(mod))) {
+          mod = path.join(process.cwd(), mod)
+        }
+        if (NGN.util.pathExists(mod)) {
+          mod = path.join(process.cwd(), mod)
+          let before = this.app._router ? this.app._router.stack.length - 2 : 0
+          require(mod)(this.app)
+          this.managedroutes[mod] = [before + 2, this.app._router.stack.length - 1]
+          this.monitor(mod)
+        }
+      }
+    }
+  }
+
+  reindexRoutes (start, end) {
 
   }
 
@@ -247,51 +360,55 @@ class HttpServer extends NGN.Server {
       if (!me.monitors[dir].hasOwnProperty('files')) {
         return false
       }
-      return me.monitors[dir].files.indexOf(path.basename(filepath)) >= 0
+      return me.monitors[dir].files.indexOf(filepath) >= 0
     }
   }
 
-  monitor () {
+  // getModules () {
+  //   // Get all of the required local modules (i.e. part of the project, not the core)
+  //   return Object.keys(require.cache).filter(function (p) {
+  //     return p.indexOf(process.cwd()) === 0 && p.indexOf('node_modules') < 0
+  //   }).map(function (p) {
+  //     return path.resolve(path.join(process.cwd(), p.replace(__dirname, '').replace(process.cwd(), '')))
+  //   })
+  // }
+
+  monitor (filepath) {
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
       return
     }
 
-    // Get all of the required local modules (i.e. part of the project, not the core)
-    let modules = Object.keys(require.cache).filter(function (p) {
-      return p.indexOf(process.cwd()) === 0 && p.indexOf('node_modules') < 0
-    }).map(function (p) {
-      return path.resolve(path.join(process.cwd(), p.replace(__dirname, '').replace(process.cwd(), '')))
-    })
-
     let me = this
-    modules.forEach(function (filepath) {
-      let dir = path.dirname(filepath)
-      if (!me.monitors.hasOwnProperty(dir)) {
-        watch.createMonitor(dir, {
-          ignoreDotFiles: true,
-          filter: me.fileFilter(dir),
-          ignoreUnreadableDir: true,
-          ignoreNotPermitted: true,
-          ignoreDirectoryPattern: '/node_modules/'
-        }, function (m) {
-          m.on('created', me.reloadRoutes)
-          m.on('changed', function (f) {
-            me.reloadRoutes(f)
-          })
-          m.on('removed', me.reloadRoutes)
-          me.monitors[dir] = {
-            monitor: m,
-            files: [path.basename(filepath)]
-          }
-        })
-      } else {
-        if (me.monitors[dir].files.indexOf(path.basename(filepath)) < 0) {
-          me.monitors[dir].files.push(path.basename(filepath))
-        }
+    let dir = path.dirname(filepath)
+    if (me.monitors[dir] === undefined) {
+      me.monitors[dir] = {
+        files: []
       }
-      console.warn('Watching', filepath)
-    })
+      watch.createMonitor(dir, {
+        ignoreDotFiles: true,
+        filter: me.fileFilter(dir),
+        ignoreUnreadableDir: true,
+        ignoreNotPermitted: true,
+        ignoreDirectoryPattern: '/node_modules/'
+      }, function (m) {
+        m.on('created', function (f) {
+          me.reloadRoutes(f)
+        })
+        m.on('changed', function (f) {
+          me.reloadRoutes(f)
+        })
+        m.on('removed', function (f) {
+          me.reloadRoutes(f)
+        })
+        me.monitors[dir].monitor = m
+        me.monitors[dir].files.push(filepath)
+      })
+    }
+    if (me.monitors[dir].files.indexOf(filepath) < 0) {
+      me.monitors[dir].files.push(filepath)
+      console.log('Watching', filepath)
+    }
   }
 
   reloadRoutes (f) {
@@ -303,5 +420,6 @@ class HttpServer extends NGN.Server {
   }
 }
 
-global.NGN.http = global.NGN.http || {}
-global.NGN.http.Server = HttpServer
+global.NGNX = global.NGNX || {}
+global.NGNX.http = global.NGN.http || {}
+global.NGNX.http.Server = HttpServer
