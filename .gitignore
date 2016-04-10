@@ -1,0 +1,8 @@
+.*
+_*
+node_modules
+!.gitignore
+!.npmignore
+!.travis.yml
+*.db
+npm-debug.log

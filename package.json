@@ -1,0 +1,44 @@
+{
+  "name": "ngn-http",
+  "version": "0.0.1",
+  "description": "A simplified HTTP server.",
+  "main": "index.js",
+  "scripts": {
+    "test": "tape test/**/*.js | tap-spec && snazzy --verbose"
+  },
+  "keywords": [
+    "ngn",
+    "http",
+    "web",
+    "api",
+    "rest",
+    "websocket"
+  ],
+  "author": "Corey Butler",
+  "license": "LGPL-3.0",
+  "devDependencies": {
+    "babel-eslint": "^4.1.3",
+    "buffer-equal-constant-time": "^1.0.1",
+    "ngn-sse": "^0.0.3",
+    "snazzy": "^2.0.1",
+    "standard": "^5.3.1",
+    "standard-tap": "^1.0.1",
+    "tap-spec": "^4.1.0",
+    "tape": "^4.2.2"
+  },
+  "standard": {
+    "parser": "babel-eslint",
+    "ignore": [
+      "_*",
+      "_**/*"
+    ],
+    "globals": [
+      "NGN",
+      "ngn"
+    ]
+  },
+  "dependencies": {
+    "express": "^4.13.4",
+    "watch": "^0.17.1"
+  }
+}
