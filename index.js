@@ -41,7 +41,7 @@ class HttpServer extends NGN.Server {
         enumerable: true,
         configurable: false,
         writable: false,
-        value: cfg.port || (this.crt !== null ? 443 : 80)
+        value: cfg.port || (cfg.certificate ? 443 : 80)
       },
 
       /**
@@ -290,6 +290,7 @@ class HttpServer extends NGN.Server {
       me._running = true
       me._starting = false
       me.emit('start')
+      console.log('Server running at', me.ip + ':' + me.port)
     })
   }
 
@@ -338,17 +339,20 @@ class HttpServer extends NGN.Server {
         }
         if (NGN.util.pathExists(mod)) {
           mod = path.join(process.cwd(), mod)
-          let before = this.app._router ? this.app._router.stack.length - 2 : 0
-          require(mod)(this.app)
-          this.managedroutes[mod] = [before + 2, this.app._router.stack.length - 1]
-          this.monitor(mod)
         }
       }
+      if (NGN.util.pathExists(mod)) {
+        let before = this.app._router ? this.routes.length - 2 : 0
+        if (require.cache.hasOwnProperty(mod)) {
+          delete require.cache[mod]
+        }
+        require(mod)(this.app)
+        this.managedroutes[mod] = [before + 2, this.routes.length - 1]
+        this.monitor(mod)
+      }
+    } else {
+      mod(this.app)
     }
-  }
-
-  reindexRoutes (start, end) {
-
   }
 
   fileFilter (dir) {
@@ -364,14 +368,14 @@ class HttpServer extends NGN.Server {
     }
   }
 
-  // getModules () {
-  //   // Get all of the required local modules (i.e. part of the project, not the core)
-  //   return Object.keys(require.cache).filter(function (p) {
-  //     return p.indexOf(process.cwd()) === 0 && p.indexOf('node_modules') < 0
-  //   }).map(function (p) {
-  //     return path.resolve(path.join(process.cwd(), p.replace(__dirname, '').replace(process.cwd(), '')))
-  //   })
-  // }
+  getModules () {
+    // Get all of the required local modules (i.e. part of the project, not the core)
+    return Object.keys(require.cache).filter(function (p) {
+      return p.indexOf(process.cwd()) === 0 && p.indexOf('node_modules') < 0
+    }).map(function (p) {
+      return path.resolve(path.join(process.cwd(), p.replace(__dirname, '').replace(process.cwd(), '')))
+    })
+  }
 
   monitor (filepath) {
     // If auto-refresh isn't active, ignore this.
@@ -411,12 +415,30 @@ class HttpServer extends NGN.Server {
     }
   }
 
+  reindexRoutes (start, end) {
+    let me = this
+    Object.keys(this.managedroutes).forEach(function (filepath) {
+      if (me.managedroutes[filepath][0] > end) {
+        me.managedroutes[filepath][0] = me.managedroutes[filepath][0] - start
+        me.managedroutes[filepath][1] = me.managedroutes[filepath][1] - end
+      }
+    })
+  }
+
   reloadRoutes (f) {
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
       return
     }
-    console.info('Reloading routes. Triggered by:', f)
+    this.routes.splice(this.managedroutes[f][0], (this.managedroutes[f][1]-this.managedroutes[f][0]) + 1)
+    this.reindexRoutes(this.managedroutes[f][0], this.managedroutes[f][1])
+    delete this.managedroutes[f]
+    this.createRoutes(f)
+    console.info('Routes reloaded. Triggered by', f.replace(process.cwd(), '.'))
+  }
+
+  get routes () {
+    return this.app._router.stack
   }
 }
 
