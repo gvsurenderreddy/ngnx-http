@@ -1,0 +1,31 @@
+language: node_js
+node_js:
+- 4.2.1
+- 5.10.2
+sudo: false
+notifications:
+  hipchat:
+    rooms:
+      secure: G86agoGJWFpnW+DIwoY0iZjTi4858qgZUnVSFKkz39zfeIFm/lnmcBG3MqLMzvkjFrj+qoofqAUUbycvA8ZE7FbX6+rOfChPpco14LM/cPWrltNuLEYGHA5ikLTrGXOQpy6HFx0MFxhDQc5GFZWoNOVZb8bRogyv1PZwS2AG7tQ=
+    template:
+    - "%{repository}#%{build_number} (%{branch} - %{commit} : %{author}): %{message}"
+    format: html
+deploy:
+  - provider: npm
+    email: sysadmin@coreybutler.com
+    api_key:
+      secure: MOgI7+lBSuKtPzcQf1L2bNsb6kuhv7RvCbCbxorQEQ3grbHucrlRSTzmlDjvpOhXSILxLencoA06nkpZWuGJxS683dwslWzyn9NkudYq/Z1QRPQT8BtEWYSFF3YDq/10CGitp1wnVnwelHm7HCOEtr+ow/rtzV5q8o66BjDqkLkN8D5G7309d678HdVfSFFgR/i2q1qEeh4RWRFuydMzWUJebIGHqrw8POS1a+Wbp38Z8EeXFG8I49hDu+wtj4Hdlz0O+4T+ff6uDp04FnD08GLksjTiT/OyJROSNdcu0XcGaMxgmsSpT9IitnxvBzxHwkxls9SrzBL756vT4DPhrdg9FONjkSBUl3QqiwgV01LMFyI/j7ja9J/jxYFaRElQSYPMoRyYwTYEKNu6UtPdbx2mnCOnXoxgll8brDfTJOEjByokpr/rgN7ePpLA6gVMbDKPNtRzgRbOYAqi5rTFNEaS+4LmyZD8NSpykBsWkV/jgEZMjejmIrozTi6mEx2l+xt0c8cvLynDSXU3BIA2ne0UCInRommtbhSYwDleIkKLseyQhF2iJJHhiVbHkhd49qE103so57myMxMTYFE1gjhghUKtrC5eRGrSMLk+X4eaa4ypf4P7HCYLYmothb/hvS4xlof3T/PsD8fHjtjeRgBiikZ+LqzQtjipev5UPUc=
+    on:
+      tags: true
+      repo: ngnjs/ngnx-http
+  - provider: releases
+    api_key:
+      secure: ZcWoKlPJI3vhYxNchE5gdpZBfwRo9khsfwbHK1Mz//dO+lnWDKY5UjVutOSQM86VDM3BGiy7kkWC7Em08GRKuTbLIFGBWTEJi2DdnR97rmYaGbBOjmgZdmI4gQL+yB3pusPOfOn6rY8kocpfxPlTQSAj724Ypo3qemZTCHSEKH4=
+    file:
+      - "index.js"
+      - "package.json"
+      - "LICENSE"
+    skip_cleanup: true
+    on:
+      tags: true
+      repo: ngnjs/ngnx-http

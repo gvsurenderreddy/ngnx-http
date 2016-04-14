@@ -1,8 +1,8 @@
 'use strict'
 
-const EventEmitter = require('events').EventEmitter
 const express = require('express')
 const path = require('path')
+const fs = require('fs')
 const watch = require('watch')
 
 /**
@@ -11,7 +11,7 @@ const watch = require('watch')
  * @requires express
  */
 class HttpServer extends NGN.Server {
-  constructor (cfg) {
+  constructor(cfg) { // eslint-disable-line
     // General configuration
     cfg = cfg || {}
 
@@ -93,7 +93,7 @@ class HttpServer extends NGN.Server {
        * @cfgproperty {string} passphrase
        * A passphrase used to read an encrypted private key.
        */
-       keypass: {
+      keypass: {
         enumerable: false,
         configurable: false,
         writable: true,
@@ -111,25 +111,25 @@ class HttpServer extends NGN.Server {
         enumerable: false,
         configurable: false,
         writable: true,
-        value:  cfg.CORS || cfg.cors || null
+        value: cfg.CORS || cfg.cors || null
       },
 
       /**
        * @cfg {Boolean} [allowCrossOriginCookies=false]
        * By default, cookies are not included in CORS requests. Use this header to indicate that cookies should be included in CORS requests.
        */
-       _ALLOWCORSCREDENTIALS: {
+      _ALLOWCORSCREDENTIALS: {
         value: NGN.coalesce(cfg.allowCrossOriginCookies, false),
         enumerable: false,
         writable: false,
         configurable: false
       },
 
-			_ALLOWMETHODS: {
-				value: cfg.allowedMethods || null,
-				enumerable:	false,
-				writable:	true
-			},
+      _ALLOWMETHODS: {
+        value: cfg.allowedMethods || null,
+        enumerable: false,
+        writable: true
+      },
 
       /**
        * @cfg {Boolean} [refresh=true]
@@ -188,7 +188,7 @@ class HttpServer extends NGN.Server {
    * @property {boolean} CORS
    * Indicates CORS support has been activated.
    */
-  get CORS () {
+  get CORS() { // eslint-disable-line
     switch (typeof this.corscfg) {
       case 'boolean':
         return this.corscfg
@@ -204,12 +204,12 @@ class HttpServer extends NGN.Server {
    * A reference to the accepted CORS domains.
    * @private
    */
-  get CORSDOMAINS () {
+  get CORSDOMAINS() { // eslint-disable-line
     return this.CORS ? (
-       Array.isArray(this.corscfg) ? this.corscfg : (
-         typeof this.corscfg === 'boolean' ? ['*'] : this.corscfg.split(',')
-       )
-     ) : []
+      Array.isArray(this.corscfg) ? this.corscfg : (
+        typeof this.corscfg === 'boolean' ? ['*'] : this.corscfg.split(',')
+        )
+      ) : []
   }
 
   /**
@@ -224,51 +224,51 @@ class HttpServer extends NGN.Server {
    * By default, everything is allowed. Only configure this when the application needs to explicitly
    * use a limited number of verbs. For example, a read-only site may set this to `GET`.
    */
-  get allowedMethods () {
-    if (this._ALLOWMETHODS == null){
-      return ['GET','HEAD','POST','PUT','DELETE','TRACE','OPTIONS','CONNECT','PATCH']
+  get allowedMethods() { // eslint-disable-line
+    if (this._ALLOWMETHODS == null) {
+      return ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'TRACE', 'OPTIONS', 'CONNECT', 'PATCH']
     } else {
       return this._ALLOWMETHODS.toString().toUpperCase().split(',')
     }
   }
 
-  set allowedMethods (value) {
-    this._ALLOWMETHODS = (Array.isArray(value) == true ? value.join() : value).toUpperCase()
+  set allowedMethods(value) { // eslint-disable-line
+    this._ALLOWMETHODS = (Array.isArray(value) === true ? value.join() : value).toUpperCase()
   }
 
-  get ca () {
+  get ca() { // eslint-disable-line
     if (NGN.util.pathReadable(this.certauthority)) {
       this.certauthority = fs.readFileSync(this.certauthority)
     }
     return this.certauthority
   }
 
-  get certificate () {
+  get certificate() { // eslint-disable-line
     if (NGN.util.pathReadable(this.crt)) {
       this.crt = fs.readFileSync(this.crt)
     }
     return this.crt
   }
 
-  get key () {
+  get key() { // eslint-disable-line
     if (NGN.util.pathReadable(this.privkey)) {
       this.privkey = fs.readFileSync(this.privkey)
     }
     return this.privkey
   }
 
-  get passphrase () {
+  get passphrase() { // eslint-disable-line
     if (NGN.util.pathReadable(this.keypass)) {
       this.keypass = fs.readFileSync(this.keypass)
     }
     return this.keypass
   }
 
-  get poweredbyHeader () {
+  get poweredbyHeader() { // eslint-disable-line
     return this.poweredby || 'NGN'
   }
 
-  start () {
+  start() { // eslint-disable-line
     this._starting = true
     if (this.crt) {
       let opts = {
@@ -294,7 +294,8 @@ class HttpServer extends NGN.Server {
     })
   }
 
-  stop () {
+  stop() { // eslint-disable-line
+    let me = this
     this.server.on('stop', function () {
       this._running = false
       me.emit('stop')
@@ -328,7 +329,7 @@ class HttpServer extends NGN.Server {
    * ```
    * The example above will still work, but it will not auto-refresh.
    */
-  createRoutes (mod) {
+  createRoutes(mod) { // eslint-disable-line
     if (typeof mod === 'string') {
       if (!NGN.util.pathExists(path.resolve(mod))) {
         if (path.extname(mod) !== '.js') {
@@ -355,7 +356,7 @@ class HttpServer extends NGN.Server {
     }
   }
 
-  fileFilter (dir) {
+  fileFilter(dir) { // eslint-disable-line
     let me = this
     return function (filepath) {
       if (!me.monitors.hasOwnProperty(dir)) {
@@ -368,7 +369,7 @@ class HttpServer extends NGN.Server {
     }
   }
 
-  getModules () {
+  getModules() { // eslint-disable-line
     // Get all of the required local modules (i.e. part of the project, not the core)
     return Object.keys(require.cache).filter(function (p) {
       return p.indexOf(process.cwd()) === 0 && p.indexOf('node_modules') < 0
@@ -377,7 +378,7 @@ class HttpServer extends NGN.Server {
     })
   }
 
-  monitor (filepath) {
+  monitor(filepath) { // eslint-disable-line
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
       return
@@ -415,7 +416,7 @@ class HttpServer extends NGN.Server {
     }
   }
 
-  reindexRoutes (start, end) {
+  reindexRoutes(start, end) { // eslint-disable-line
     let me = this
     Object.keys(this.managedroutes).forEach(function (filepath) {
       if (me.managedroutes[filepath][0] > end) {
@@ -425,19 +426,19 @@ class HttpServer extends NGN.Server {
     })
   }
 
-  reloadRoutes (f) {
+  reloadRoutes(f) { // eslint-disable-line
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
       return
     }
-    this.routes.splice(this.managedroutes[f][0], (this.managedroutes[f][1]-this.managedroutes[f][0]) + 1)
+    this.routes.splice(this.managedroutes[f][0], (this.managedroutes[f][1] - this.managedroutes[f][0]) + 1)
     this.reindexRoutes(this.managedroutes[f][0], this.managedroutes[f][1])
     delete this.managedroutes[f]
     this.createRoutes(f)
     console.info('Routes reloaded. Triggered by', f.replace(process.cwd(), '.'))
   }
 
-  get routes () {
+  get routes() { // eslint-disable-line
     return this.app._router.stack
   }
 }
