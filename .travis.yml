@@ -7,7 +7,7 @@ sudo: false
 notifications:
   hipchat:
     rooms:
-      secure: G86agoGJWFpnW+DIwoY0iZjTi4858qgZUnVSFKkz39zfeIFm/lnmcBG3MqLMzvkjFrj+qoofqAUUbycvA8ZE7FbX6+rOfChPpco14LM/cPWrltNuLEYGHA5ikLTrGXOQpy6HFx0MFxhDQc5GFZWoNOVZb8bRogyv1PZwS2AG7tQ=
+      secure: "TThMNOlBpt0egBpRSnZSV1MOIHEGb70aLAhPcHvX1cP61xA5yOppii8RU/OR/pHwR4YdGIgtRphrYCvSVtGjCpKTwuMI5WwOLeZeuX6zHgBs07gabsut/MgEjQcpd/xxkPHSY06gCS0fqDSLHINNFxXhziX0Aj93KLRa0pEM1CATLvnzTVGHRNsd4/U3ofH8pzWURRH7PJNcfqpn6Squ1oGwvwrlCpGMhDkhC3bSOFn6QFFq4bIg6Zpbm7XiW0UuK1aOaUVoHeSip2yQKPfnXYhti6mSIifFC/1J4llrf6rmuWnkO2k1lpqvEIFlAxZM2L80q37BiE9ctbx1fIPzfrq9Y0bkTBbgyW5RACacbOxHGwJhh3PgIXoM2Bxfb3a5PLH5dtIDQod6zbM0XolNY5xa3IccywE3Avwh4sqxqC2wei2S97s9PNlEHBJXLbp6lWG3KwmA687a0Xd3tQSBYKj97l83gRKaTyWougm6vrl2DY3JdKQK53J/eJciGYl50zf9Or1NcFUJ0LH6RMZW3Zy5516O85bpywLleli8p3uTU+vcOTr5Try2YsTfoFJsQalJ/RNRCzdHwuMQ6Fps6qLlJnEb7le28bSrVGE0/SL3at5uptGmJHDUVZsXyI2MgDTXAsoN7Qd2hNwPewUgvTJEWCo5sVD8/UMtOvXOuTY="
     template:
     - "%{repository}#%{build_number} (%{branch} - %{commit} : %{author}): %{message}"
     format: html
