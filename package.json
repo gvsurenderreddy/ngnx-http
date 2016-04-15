@@ -4,7 +4,7 @@
   "description": "A simplified HTTP server.",
   "main": "index.js",
   "scripts": {
-    "test": "tape test/**/*.js | tap-spec && snazzy --verbose"
+    "test": "tape test/*.js | tap-spec && snazzy --verbose"
   },
   "keywords": [
     "ngn",
@@ -21,6 +21,7 @@
     "buffer-equal-constant-time": "^1.0.1",
     "ngn": "^0.2.133",
     "ngn-sse": "^0.0.3",
+    "request": "^2.71.0",
     "snazzy": "^2.0.1",
     "standard": "^5.3.1",
     "standard-tap": "^1.0.1",
@@ -41,6 +42,7 @@
     ]
   },
   "dependencies": {
+    "cors": "^2.7.1",
     "express": "^4.13.4",
     "watch": "^0.17.1"
   }

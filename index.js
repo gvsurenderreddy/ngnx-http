@@ -1,14 +1,25 @@
 'use strict'
 
 const express = require('express')
+const cors = require('cors')
 const path = require('path')
 const fs = require('fs')
 const watch = require('watch')
 
 /**
- * @class NGN.HttpServer
- * The NGN HTTP server is an express-based server designed to
+ * @class NGNX.http.Server
+ * The NGN HTTP server is an express-based server designed to simplify
+ * development and handle the most common HTTP serving needs. It is not
+ * designed for every situation, only the most comon. While this web server
+ * does support SSL, it was designed primarily to sit behind an SSL terminator,
+ * serving content from a trusted network.
  * @requires express
+ * @requires cors
+ * @requires watch
+ * @fires start
+ * Fired when the server startup is complete.
+ * @fires stop
+ * Fired when the server stops and shuts down.
  */
 class HttpServer extends NGN.Server {
   constructor(cfg) { // eslint-disable-line
@@ -33,15 +44,16 @@ class HttpServer extends NGN.Server {
       },
 
       /**
-       * @cfg {number} [port=80/443]
+       * @cfgproperty {number} [port=80/443]
        * The port on which the server is listening.
        * By default, this is `80`, or `443` if a TLS certifcate is specified.
+       * @readonly
        */
-      port: {
+      portnumber: {
         enumerable: true,
         configurable: false,
-        writable: false,
-        value: cfg.port || (cfg.certificate ? 443 : 80)
+        writable: true,
+        value: NGN.coalesce(cfg.port, (cfg.certificate ? 443 : 80))
       },
 
       /**
@@ -101,37 +113,6 @@ class HttpServer extends NGN.Server {
       },
 
       /**
-       * @cfg {Boolean/String/Array} [allowCrossOrigin=false]
-       * Set to `true` to enable requests from all origins. Alternatively,
-       * provide a {String} domain, such as `http://my.safedomain.com` or `https://my.safedomain.com, https://other.domain.net`.
-       * Also accepts an array of domains:
-       * `['https://first.safedomain.com','https://second.safedomain.com']`
-       */
-      corscfg: {
-        enumerable: false,
-        configurable: false,
-        writable: true,
-        value: cfg.CORS || cfg.cors || null
-      },
-
-      /**
-       * @cfg {Boolean} [allowCrossOriginCookies=false]
-       * By default, cookies are not included in CORS requests. Use this header to indicate that cookies should be included in CORS requests.
-       */
-      _ALLOWCORSCREDENTIALS: {
-        value: NGN.coalesce(cfg.allowCrossOriginCookies, false),
-        enumerable: false,
-        writable: false,
-        configurable: false
-      },
-
-      _ALLOWMETHODS: {
-        value: cfg.allowedMethods || null,
-        enumerable: false,
-        writable: true
-      },
-
-      /**
        * @cfg {Boolean} [refresh=true]
        * Setting this to `true` turns on a file watcher.
        * Anytime a file change is detected, the routes will be automatically
@@ -176,73 +157,143 @@ class HttpServer extends NGN.Server {
         configurable: false,
         writable: true,
         value: {}
+      },
+
+      /**
+       * @cfg {Array|String} [whitelist=*]
+       * A whitelist of domains allowed to access the server.
+       * This activates CORS by setting the `Access-Control-Allow-Origin` header.
+       * A whitelist will always override a blacklist. By default, all sources
+       * are accepted.
+       */
+      whitelist: {
+        enumerable: false,
+        configurable: false,
+        writable: true,
+        value: cfg.whitelist ? (Array.isArray(cfg.whitelist) ? cfg.whitelist : [cfg.whitelist]) : []
+      },
+
+      /**
+       * @cfg {Array|String} blacklist
+       * A blacklist of domains **not** allowed to access the server.
+       * This activates CORS by setting the `Access-Control-Allow-Origin` header.
+       * A whitelist will always override a blacklist. By default, nothing is
+       * blocked/blacklisted.
+       */
+      blacklist: {
+        enumerable: false,
+        configurable: false,
+        writable: true,
+        value: cfg.blacklist ? (Array.isArray(cfg.blacklist) ? cfg.blacklist : [cfg.blacklist]) : []
+      },
+
+      /**
+       * @cfg {Array|String} allowedMethods
+       * A list of HTTP methods acccepted by this server.
+       * This activates CORS by setting the `Access-Control-Allow-Methods` header.
+       */
+      allowedMethods: {
+        enumerable: false,
+        configurable: false,
+        writable: true,
+        value: cfg.allowedMethods ? (Array.isArray(cfg.allowedMethods) ? cfg.allowedMethods : [cfg.allowedMethods]) : []
+      },
+
+      /**
+       * @cfg {Array|String} allowedHeaders
+       * A list of HTTP headers acccepted by this server.
+       * This activates CORS by setting the `Access-Control-Allow-Headers` header.
+       * If this is not specified, the `Access-Control-Request-Headers` headers
+       * are used (i.e. response mirrors the request).
+       */
+      allowedHeaders: {
+        enumerable: false,
+        configurable: false,
+        writable: true,
+        value: cfg.allowedHeaders ? (Array.isArray(cfg.allowedHeaders) ? cfg.allowedHeaders : [cfg.allowedHeaders]) : []
+      },
+
+      /**
+       * @cfg {Array|String} exposedHeaders
+       * A list of HTTP headers exposed by this server.
+       * This activates CORS by setting the `Access-Control-Expose-Headers` header.
+       */
+      exposedHeaders: {
+        enumerable: false,
+        configurable: false,
+        writable: true,
+        value: cfg.exposedHeaders ? (Array.isArray(cfg.exposedHeaders) ? cfg.exposedHeaders : [cfg.exposedHeaders]) : []
+      },
+
+      /**
+       * @cfg {boolean} [credentials=false]
+       * Set to `true` to enable passing of credentials to the server (example: basic auth).
+       * This activates CORS by setting the `Access-Control-Allow-Credentials` header,
+       * otherwise it's omitted.
+       */
+      credentials: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: NGN.coalesce(cfg.credentials, false)
+      },
+
+      /**
+       * @cfg {number} maxAge
+       * Set this to an integer to enable the `Access-Control-Allow-Max-Age` header.
+       * This automatically activates CORS.
+       */
+      maxAge: {
+        enumerable: false,
+        configurable: false,
+        writable: false,
+        value: cfg.maxAge || cfg.maxage || null
       }
     })
 
     if (this.refresh) {
       console.warn('Automatic route refresh is enabled. This is only recommended for development environments.')
     }
+
+    /**
+     * @method app.cors
+     * A reference to the underlying Express CORS engine.
+     * This is for use within routes.
+     */
+    this.app.cors = this.CORS
   }
 
   /**
-   * @property {boolean} CORS
-   * Indicates CORS support has been activated.
+   * @property {function} CORS
+   * A reference to the underlying Express CORS engine.
    */
   get CORS() { // eslint-disable-line
-    switch (typeof this.corscfg) {
-      case 'boolean':
-        return this.corscfg
-      case 'string':
-        return true
-      default:
-        return Array.isArray(this.corscfg)
-    }
+    return cors
   }
 
   /**
-   * @property {Array} CORSDOMAINS
-   * A reference to the accepted CORS domains.
-   * @private
+   * @property {number} port
+   * The port on which the server is listening.
    */
-  get CORSDOMAINS() { // eslint-disable-line
-    return this.CORS ? (
-      Array.isArray(this.corscfg) ? this.corscfg : (
-        typeof this.corscfg === 'boolean' ? ['*'] : this.corscfg.split(',')
-        )
-      ) : []
+  get port() { // eslint-disable-line
+    return this.portnumber
   }
 
   /**
-   * @property {Array} allowedMethods
-   * An array of the HTTP methods allowed by the server. By default,
-   * all methods are allowed. Methods may be restricted explicitly
-   * setting the #allowedMethods configuration parameter.
+   * @property {string} ca
+   * The contents of the Certificate Authority SSL certificate.
    */
-  /**
-   * @cfg {String/Array}
-   * Restrict traffic to specific HTTP methods/verbs such as `GET`,`POST`,`PUT`, and `DELETE`.
-   * By default, everything is allowed. Only configure this when the application needs to explicitly
-   * use a limited number of verbs. For example, a read-only site may set this to `GET`.
-   */
-  get allowedMethods() { // eslint-disable-line
-    if (this._ALLOWMETHODS == null) {
-      return ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'TRACE', 'OPTIONS', 'CONNECT', 'PATCH']
-    } else {
-      return this._ALLOWMETHODS.toString().toUpperCase().split(',')
-    }
-  }
-
-  set allowedMethods(value) { // eslint-disable-line
-    this._ALLOWMETHODS = (Array.isArray(value) === true ? value.join() : value).toUpperCase()
-  }
-
   get ca() { // eslint-disable-line
     if (NGN.util.pathReadable(this.certauthority)) {
-      this.certauthority = fs.readFileSync(this.certauthority)
+      this.certauthority = fs.readFileSync(this.certauthority).toString()
     }
     return this.certauthority
   }
 
+  /**
+   * @property {string} certificate
+   * The contents of the SSL certificate.
+   */
   get certificate() { // eslint-disable-line
     if (NGN.util.pathReadable(this.crt)) {
       this.crt = fs.readFileSync(this.crt)
@@ -250,6 +301,10 @@ class HttpServer extends NGN.Server {
     return this.crt
   }
 
+  /**
+   * @property {string} key
+   * The contents of the SSL private key.
+   */
   get key() { // eslint-disable-line
     if (NGN.util.pathReadable(this.privkey)) {
       this.privkey = fs.readFileSync(this.privkey)
@@ -257,6 +312,11 @@ class HttpServer extends NGN.Server {
     return this.privkey
   }
 
+  /**
+   * @property {string} passphrase
+   * The cencryption passphrase for the SSL private key.
+   * @private
+   */
   get passphrase() { // eslint-disable-line
     if (NGN.util.pathReadable(this.keypass)) {
       this.keypass = fs.readFileSync(this.keypass)
@@ -264,12 +324,28 @@ class HttpServer extends NGN.Server {
     return this.keypass
   }
 
+  /**
+   * @property {string} poweredbyHeader
+   * The branding associated with the server.
+   */
   get poweredbyHeader() { // eslint-disable-line
-    return this.poweredby || 'NGN'
+    return this.poweredby || null
   }
 
   start() { // eslint-disable-line
+    let me = this
     this._starting = true
+
+    if (this.poweredbyHeader) {
+      this.app.use(function (req, res, next) {
+        res.set('x-powered-by', me.poweredbyHeader)
+        next()
+      })
+    } else {
+      this.app.disable('x-powered-by')
+    }
+
+    // SSL
     if (this.crt) {
       let opts = {
         certificate: this.certificate
@@ -285,22 +361,41 @@ class HttpServer extends NGN.Server {
       this.server = require('http').Server(this.app)
     }
 
-    let me = this
-    this.server.listen(this.port, this.ip, function () {
-      me._running = true
-      me._starting = false
-      me.emit('start')
-      console.log('Server running at', me.ip + ':' + me.port)
-    })
+    if (this.portnumber <= 0) {
+      let c = require('net').createServer()
+      c.listen(0, function () {
+        me.portnumber = c.address().port
+        c.close(function () {
+          me.server.listen(me.portnumber, me.ip, function () {
+            me._running = true
+            me._starting = false
+            me.portnumber = me.server.address().port
+            me.emit('start')
+            console.info('Server running at', me.ip + ':' + me.portnumber)
+          })
+        })
+      })
+    } else {
+      this.server.listen(this.portnumber, this.ip, function () {
+        me._running = true
+        me._starting = false
+        me.portnumber = me.server.address().port
+        me.emit('start')
+        console.info('Server running at', me.ip + ':' + me.portnumber)
+      })
+    }
   }
 
   stop() { // eslint-disable-line
     let me = this
-    this.server.on('stop', function () {
+    this.server.on('close', function () {
       this._running = false
       me.emit('stop')
     })
-    this.server.stop()
+    Object.keys(this.monitors).forEach(function (m) {
+      me.monitors[m].monitor.stop()
+    })
+    this.server.close()
   }
 
   /**
@@ -356,6 +451,16 @@ class HttpServer extends NGN.Server {
     }
   }
 
+  /**
+   * @method fileFilter
+   * A method for filtering which monitored files within a directory emit a
+   * change event.
+   * @private
+   * @param  {string} dir
+   * The absolute path of the directory being monitored.
+   * @return {boolean}
+   * Indicator that the file should be filtered out of the resultset.
+   */
   fileFilter(dir) { // eslint-disable-line
     let me = this
     return function (filepath) {
@@ -369,6 +474,13 @@ class HttpServer extends NGN.Server {
     }
   }
 
+  /**
+   * @method getModules
+   * Return the node modules that have been "required" in the app.
+   * @private
+   * @return {Array}
+   * A list of the modules be reference.
+   */
   getModules() { // eslint-disable-line
     // Get all of the required local modules (i.e. part of the project, not the core)
     return Object.keys(require.cache).filter(function (p) {
@@ -378,6 +490,13 @@ class HttpServer extends NGN.Server {
     })
   }
 
+  /**
+   * @method monitor
+   * Monitor a file for file changes. This enables route hot-reloading.
+   * @private
+   * @param  {string} filepath
+   * The path of the file to monitor.
+   */
   monitor(filepath) { // eslint-disable-line
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
@@ -416,6 +535,17 @@ class HttpServer extends NGN.Server {
     }
   }
 
+  /**
+   * @method reindexRoutes
+   * Routes are indexed so they can be referenced and reloaded.
+   * This reindexes routes by removing a range of routes. This is
+   * primarily used for reloading routes appropriately.
+   * @param  {number} start
+   * Starting index.
+   * @param  {number} end
+   * Ending index.
+   * @private
+   */
   reindexRoutes(start, end) { // eslint-disable-line
     let me = this
     Object.keys(this.managedroutes).forEach(function (filepath) {
@@ -426,6 +556,13 @@ class HttpServer extends NGN.Server {
     })
   }
 
+  /**
+   * @method reloadRoutes
+   * Refresh the routes.
+   * @private
+   * @param  {string} filepath
+   * The path to reload routes from.
+   */
   reloadRoutes(f) { // eslint-disable-line
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
@@ -438,6 +575,11 @@ class HttpServer extends NGN.Server {
     console.info('Routes reloaded. Triggered by', f.replace(process.cwd(), '.'))
   }
 
+  /**
+   * @property {Array} routes
+   * A pointer to the raw Express routes.
+   * @private
+   */
   get routes() { // eslint-disable-line
     return this.app._router.stack
   }
