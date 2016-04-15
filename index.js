@@ -248,6 +248,17 @@ class HttpServer extends NGN.Server {
         configurable: false,
         writable: false,
         value: cfg.maxAge || cfg.maxage || null
+      },
+
+      /**
+       * @cfg {boolean} [cors=false]
+       * Use CORS support globally.
+       */
+      globalcors: {
+        enumerable: false,
+        writable: false,
+        configurable: false,
+        value: NGN.coalesce(cfg.cors, false)
       }
     })
 
@@ -261,6 +272,10 @@ class HttpServer extends NGN.Server {
      * This is for use within routes.
      */
     this.app.cors = this.CORS
+
+    if (this.globalcors) {
+      this.app.use(cors(this.CORSOPTIONS))
+    }
   }
 
   /**
@@ -582,6 +597,43 @@ class HttpServer extends NGN.Server {
    */
   get routes() { // eslint-disable-line
     return this.app._router.stack
+  }
+
+  /**
+   * @property {function} CORSOPTIONS
+   * The CORS options.
+   * @private
+   */
+  get CORSOPTIONS() { // eslint-disable-line
+    let me = this
+    return function (req, callback) {
+      let opts = {}
+      if (me.whitelist.length > 0) {
+        opts.origin = (me.whitelist.indexOf(req.header('Origin')) !== -1)
+      } else if (me.blacklist.length > 0) {
+        opts.origin = (me.blacklist.indexOf(req.header('Origin')) === -1)
+      }
+      if (me.allowedMethods.length > 0) {
+        opts.methods = me.allowedMethods
+      }
+      if (me.allowedHeaders.length > 0) {
+        opts.allowedHeaders = me.allowedHeaders
+      }
+      if (me.exposedHeaders.length > 0) {
+        opts.exposedHeaders = me.exposedHeaders
+      }
+      if (me.credentials) {
+        opts.credentials = me.credentials
+      }
+      if (me.maxAge !== null) {
+        opts.maxAge = me.maxAge
+      }
+      if (Object.keys(opts).length > 0) {
+        opts.preflightContinue = true
+      }
+      console.log(opts)
+      callback(null, opts)
+    }
   }
 }
 
