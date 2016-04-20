@@ -29,6 +29,8 @@ class HttpServer extends NGN.Server {
     // Instantiate super constructor
     super(cfg)
 
+    let me = this
+
     // Private properties
     Object.defineProperties(this, {
       /**
@@ -137,10 +139,12 @@ class HttpServer extends NGN.Server {
       },
 
       /**
-       * @property {object} managedroutes
-       * The modules being monitored for route changes.
+       * @property {object} insertionpoint
+       * The insertion point where route changes are reintroduced for each
+       * user-defined module.
+       * @private
        */
-      managedroutes: {
+      insertionpoint: {
         enumerable: false,
         writable: true,
         configurable: false,
@@ -259,6 +263,19 @@ class HttpServer extends NGN.Server {
         writable: false,
         configurable: false,
         value: NGN.coalesce(cfg.cors, false)
+      },
+
+      /**
+       * @cfg {boolean} [basiclog=true]
+       * Use a simple built in log to view requests on the console.
+       * The basic log outputs a timestamp, the request method, and the
+       * request URL.
+       */
+      basiclog: {
+        enumerable: false,
+        writable: false,
+        configurable: false,
+        value: NGN.coalesce(cfg.basiclog, true)
       }
     })
 
@@ -266,15 +283,70 @@ class HttpServer extends NGN.Server {
       console.warn('Automatic route refresh is enabled. This is only recommended for development environments.')
     }
 
+    if (this.basiclog) {
+      this.app.use(function (req, res, next) {
+        console.log(new Date(), req.method, req.url)
+        next()
+      })
+    }
+
+    if (this.poweredbyHeader) {
+      this.app.use(function (req, res, next) {
+        res.set('x-powered-by', me.poweredbyHeader)
+        next()
+      })
+    } else {
+      this.app.disable('x-powered-by')
+    }
+
+    if (this.globalcors) {
+      this.app.use(this.CORS)
+      console.warn('Global CORS support activated.')
+    }
+
     /**
      * @method app.cors
-     * A reference to the underlying Express CORS engine.
+     * A reference to the underlying CORS processor.
      * This is for use within routes.
      */
     this.app.cors = this.CORS
+  }
 
-    if (this.globalcors) {
-      this.app.use(cors(this.CORSOPTIONS))
+  /**
+   * @property {function} CORSOPTIONS
+   * The CORS options.
+   * @private
+   */
+  get CORSOPTIONS() { // eslint-disable-line
+    let me = this
+    return function (req2, callback) {
+      let opts = {}
+      if (me.whitelist.length > 0) {
+        opts.origin = (me.whitelist.indexOf(req2.header('origin')) !== -1)
+      } else if (me.blacklist.length > 0) {
+        opts.origin = (me.blacklist.indexOf(req2.header('origin')) === -1)
+      } else {
+        opts.origin = req2.headers.origin
+      }
+      if (me.allowedMethods.length > 0) {
+        opts.methods = me.allowedMethods
+      }
+      if (me.allowedHeaders.length > 0) {
+        opts.allowedHeaders = me.allowedHeaders
+      }
+      if (me.exposedHeaders.length > 0) {
+        opts.exposedHeaders = me.exposedHeaders
+      }
+      if (me.credentials) {
+        opts.credentials = me.credentials
+      }
+      if (me.maxAge !== null) {
+        opts.maxAge = me.maxAge
+      }
+      // if (Object.keys(opts).length > 0) {
+      //   opts.preflightContinue = true
+      // }
+      callback(null, opts)
     }
   }
 
@@ -283,7 +355,7 @@ class HttpServer extends NGN.Server {
    * A reference to the underlying Express CORS engine.
    */
   get CORS() { // eslint-disable-line
-    return cors
+    return cors(this.CORSOPTIONS)
   }
 
   /**
@@ -348,17 +420,9 @@ class HttpServer extends NGN.Server {
   }
 
   start() { // eslint-disable-line
+    console.log('Starting up...')
     let me = this
     this._starting = true
-
-    if (this.poweredbyHeader) {
-      this.app.use(function (req, res, next) {
-        res.set('x-powered-by', me.poweredbyHeader)
-        next()
-      })
-    } else {
-      this.app.disable('x-powered-by')
-    }
 
     // SSL
     if (this.crt) {
@@ -377,18 +441,13 @@ class HttpServer extends NGN.Server {
     }
 
     if (this.portnumber <= 0) {
-      let c = require('net').createServer()
-      c.listen(0, function () {
-        me.portnumber = c.address().port
-        c.close(function () {
-          me.server.listen(me.portnumber, me.ip, function () {
-            me._running = true
-            me._starting = false
-            me.portnumber = me.server.address().port
-            me.emit('start')
-            console.info('Server running at', me.ip + ':' + me.portnumber)
-          })
-        })
+      this.portnumber = 0
+      this.server.listen(this.portnumber, this.ip, function () {
+        me._running = true
+        me._starting = false
+        me.portnumber = me.server.address().port
+        me.emit('start')
+        console.info('Server running at', me.ip + ':' + me.portnumber)
       })
     } else {
       this.server.listen(this.portnumber, this.ip, function () {
@@ -453,12 +512,16 @@ class HttpServer extends NGN.Server {
         }
       }
       if (NGN.util.pathExists(mod)) {
-        let before = this.app._router ? this.routes.length - 2 : 0
         if (require.cache.hasOwnProperty(mod)) {
           delete require.cache[mod]
         }
         require(mod)(this.app)
-        this.managedroutes[mod] = [before + 2, this.routes.length - 1]
+        this.routes.map(function (r, i) {
+          if (r.name === 'bound dispatch' && !r.src) {
+            r.src = mod
+          }
+          return r
+        })
         this.monitor(mod)
       }
     } else {
@@ -551,27 +614,6 @@ class HttpServer extends NGN.Server {
   }
 
   /**
-   * @method reindexRoutes
-   * Routes are indexed so they can be referenced and reloaded.
-   * This reindexes routes by removing a range of routes. This is
-   * primarily used for reloading routes appropriately.
-   * @param  {number} start
-   * Starting index.
-   * @param  {number} end
-   * Ending index.
-   * @private
-   */
-  reindexRoutes(start, end) { // eslint-disable-line
-    let me = this
-    Object.keys(this.managedroutes).forEach(function (filepath) {
-      if (me.managedroutes[filepath][0] > end) {
-        me.managedroutes[filepath][0] = me.managedroutes[filepath][0] - start
-        me.managedroutes[filepath][1] = me.managedroutes[filepath][1] - end
-      }
-    })
-  }
-
-  /**
    * @method reloadRoutes
    * Refresh the routes.
    * @private
@@ -583,57 +625,36 @@ class HttpServer extends NGN.Server {
     if (!this.refresh) {
       return
     }
-    this.routes.splice(this.managedroutes[f][0], (this.managedroutes[f][1] - this.managedroutes[f][0]) + 1)
-    this.reindexRoutes(this.managedroutes[f][0], this.managedroutes[f][1])
-    delete this.managedroutes[f]
+
+    let me = this
+
+    this.routes.forEach(function (r, i) {
+      if (r.src && r.src === f) {
+        delete me.routes[i]
+      }
+    })
+
+    this.routes = this.routes.filter(function (r) {
+      return r !== undefined
+    })
+
     this.createRoutes(f)
+
     console.info('Routes reloaded. Triggered by', f.replace(process.cwd(), '.'))
   }
 
   /**
    * @property {Array} routes
    * A pointer to the raw Express routes.
+   * @readonly
    * @private
    */
   get routes() { // eslint-disable-line
     return this.app._router.stack
   }
-
-  /**
-   * @property {function} CORSOPTIONS
-   * The CORS options.
-   * @private
-   */
-  get CORSOPTIONS() { // eslint-disable-line
-    let me = this
-    return function (req, callback) {
-      let opts = {}
-      if (me.whitelist.length > 0) {
-        opts.origin = (me.whitelist.indexOf(req.header('Origin')) !== -1)
-      } else if (me.blacklist.length > 0) {
-        opts.origin = (me.blacklist.indexOf(req.header('Origin')) === -1)
-      }
-      if (me.allowedMethods.length > 0) {
-        opts.methods = me.allowedMethods
-      }
-      if (me.allowedHeaders.length > 0) {
-        opts.allowedHeaders = me.allowedHeaders
-      }
-      if (me.exposedHeaders.length > 0) {
-        opts.exposedHeaders = me.exposedHeaders
-      }
-      if (me.credentials) {
-        opts.credentials = me.credentials
-      }
-      if (me.maxAge !== null) {
-        opts.maxAge = me.maxAge
-      }
-      if (Object.keys(opts).length > 0) {
-        opts.preflightContinue = true
-      }
-      console.log(opts)
-      callback(null, opts)
-    }
+  // Explicitly hidden
+  set routes(value) { // eslint-disable-line
+    this.app._router.stack = value
   }
 }
 
