@@ -2,6 +2,7 @@
 
 const express = require('express')
 const cors = require('cors')
+const bodyParser = require('body-parser')
 const path = require('path')
 const fs = require('fs')
 const watch = require('watch')
@@ -16,6 +17,7 @@ const watch = require('watch')
  * @requires express
  * @requires cors
  * @requires watch
+ * @requires body-parser
  * @fires start
  * Fired when the server startup is complete.
  * @fires stop
@@ -276,6 +278,17 @@ class HttpServer extends NGN.Server {
         writable: false,
         configurable: false,
         value: NGN.coalesce(cfg.basiclog, true)
+      },
+
+      /**
+       * @cfg {boolean} [json=false]
+       * Automatically parse JSON request bodies.
+       */
+      json: {
+        enumerable: false,
+        writable: false,
+        configurable: false,
+        value: NGN.coalesce(cfg.json, false)
       }
     })
 
@@ -283,6 +296,7 @@ class HttpServer extends NGN.Server {
       console.warn('Automatic route refresh is enabled. This is only recommended for development environments.')
     }
 
+    // Enable basic console logging.
     if (this.basiclog) {
       this.app.use(function (req, res, next) {
         console.log(new Date(), req.method, req.url)
@@ -290,6 +304,7 @@ class HttpServer extends NGN.Server {
       })
     }
 
+    // Configure the x-powered-by header.
     if (this.poweredbyHeader) {
       this.app.use(function (req, res, next) {
         res.set('x-powered-by', me.poweredbyHeader)
@@ -299,9 +314,18 @@ class HttpServer extends NGN.Server {
       this.app.disable('x-powered-by')
     }
 
+    // Configure Global CORS support.
     if (this.globalcors) {
       this.app.use(this.CORS)
       console.warn('Global CORS support activated.')
+    }
+
+    // Configure basic body parsing.
+    bodyParser.urlencoded({ extended: false })
+    if (this.json) {
+      this.app.use(bodyParser.json({
+        type: 'application/*+json'
+      }))
     }
 
     /**
@@ -310,6 +334,13 @@ class HttpServer extends NGN.Server {
      * This is for use within routes.
      */
     this.app.cors = this.CORS
+
+    /**
+     * @property app.bodyparser
+     * A reference to the underlying body-parser.
+     * This is for use within routes.
+     */
+    this.app.bodyparser = bodyParser
   }
 
   /**

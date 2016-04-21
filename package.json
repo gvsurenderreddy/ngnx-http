@@ -1,6 +1,6 @@
 {
   "name": "ngnx-http",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "A simplified HTTP server.",
   "main": "index.js",
   "scripts": {
@@ -42,6 +42,7 @@
     ]
   },
   "dependencies": {
+    "body-parser": "^1.15.0",
     "cors": "^2.7.1",
     "express": "^4.13.4",
     "watch": "^0.17.1"

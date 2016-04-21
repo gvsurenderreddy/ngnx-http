@@ -126,7 +126,7 @@ test('Automatic Route Refresh', function (t) {
               if (r3.statusCode !== 404) {
                 t.comment('Request returned ' + r3.statusCode.toString())
               }
-              t.comment('Refresh Routes on Recreation.')
+              t.comment('Refresh Routes on Recreation')
               fs.rename('./test/files/moreroutes.tmp.js', './test/files/moreroutes.js', function (fserr2) {
                 setTimeout(function () {
                   request.get('http://localhost:' + server.port + '/zing', function (err4, r4, bod4) {
