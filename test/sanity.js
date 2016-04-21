@@ -20,6 +20,7 @@ test('Basic Web Serving', function (t) {
   let server = new NGNX.http.Server({
     autoStart: false,
     poweredby: 'test',
+    json: true,
     port: 0
   })
 
@@ -33,7 +34,25 @@ test('Basic Web Serving', function (t) {
         console.error(err)
       }
       t.ok(r.statusCode === 200, 'Ping successful.')
-      server.stop()
+
+      server.app.post('/posttest', function (req, res) {
+        t.ok(typeof req.body === 'object', 'JSON received and properly parsed.')
+        res.status(200).json(req.body)
+      })
+
+      request({
+        url: 'http://localhost:' + server.port + '/posttest',
+        method: 'POST',
+        json: true,
+        body: {
+          test: true
+        }
+      }, function (_err, _r, _bod) {
+        t.ok(_r.statusCode === 200, 'Received a POST response.')
+        console.log(_bod)
+        t.ok(_bod.test === true, 'POST response sent readable JSON.')
+        server.stop()
+      })
     })
   })
 

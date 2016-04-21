@@ -323,9 +323,7 @@ class HttpServer extends NGN.Server {
     // Configure basic body parsing.
     bodyParser.urlencoded({ extended: false })
     if (this.json) {
-      this.app.use(bodyParser.json({
-        type: 'application/*+json'
-      }))
+      this.app.use(bodyParser.json())
     }
 
     /**
