@@ -1,6 +1,10 @@
 'use strict'
 
 module.exports = function (app) {
+  let subtest = require('./subinclude')(app)
+
+  app.get('/subtest', subtest.test)
+
   app.get('/ping', function (req, res) {
     res.sendStatus(200)
   })

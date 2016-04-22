@@ -166,6 +166,18 @@ class HttpServer extends NGN.Server {
       },
 
       /**
+       * @property {Object} associations
+       * A collection of the subfiles associated with a monitor.
+       * @private
+       */
+      associations: {
+        enumerable: false,
+        configurable: false,
+        writable: true,
+        value: {}
+      },
+
+      /**
        * @cfg {Array|String} [whitelist=*]
        * A whitelist of domains allowed to access the server.
        * This activates CORS by setting the `Access-Control-Allow-Origin` header.
@@ -448,6 +460,25 @@ class HttpServer extends NGN.Server {
     return this.poweredby || null
   }
 
+  /**
+   * @method getModules
+   * Return the node modules that have been "required" in the app.
+   * @private
+   * @return {Array}
+   * A list of the modules be reference.
+   */
+  get modules() { // eslint-disable-line
+    // Get all of the required local modules (i.e. part of the project, not the core)
+    return Object.keys(require.cache).filter(function (p) {
+      return p.indexOf(process.cwd()) === 0 && p.indexOf('node_modules') < 0
+    }).map(function (p) {
+      return {
+        path: path.resolve(path.join(process.cwd(), p.replace(__dirname, '').replace(process.cwd(), ''))),
+        parent: require.cache[p].parent ? require.cache[p].parent.id : null
+      }
+    })
+  }
+
   start() { // eslint-disable-line
     console.log('Starting up...')
     let me = this
@@ -526,8 +557,11 @@ class HttpServer extends NGN.Server {
    * server.createRoutes(mymod)
    * ```
    * The example above will still work, but it will not auto-refresh.
+   * @param {Array} postRange
+   * The index range that should be moved to the end of the route list.
+   * This is used internally and should never be used within an application.
    */
-  createRoutes(mod) { // eslint-disable-line
+  createRoutes(mod, postRange) { // eslint-disable-line
     if (typeof mod === 'string') {
       if (!NGN.util.pathExists(path.resolve(mod))) {
         if (path.extname(mod) !== '.js') {
@@ -545,16 +579,75 @@ class HttpServer extends NGN.Server {
           delete require.cache[mod]
         }
         require(mod)(this.app)
+
+        let me = this
+        this.routes.forEach(function (r, i) {
+          me.routes[i].index = i
+        })
         this.routes.map(function (r, i) {
           if (r.name === 'bound dispatch' && !r.src) {
             r.src = mod
           }
           return r
         })
+        if (postRange) {
+          let move = this.routes.splice(postRange[0], (postRange[1] - postRange[0]) + 1)
+          this.routes = this.routes.concat(move)
+        }
         this.monitor(mod)
       }
     } else {
       mod(this.app)
+    }
+  }
+
+  /**
+   * @method reloadRoutes
+   * Refresh the routes.
+   * @private
+   * @param  {string} filepath
+   * The path to reload routes from.
+   */
+  reloadRoutes(f, trigger) { // eslint-disable-line
+    // If auto-refresh isn't active, ignore this.
+    if (!this.refresh) {
+      return
+    }
+
+    let me = this
+    let begin = null
+
+    this.routes.forEach(function (r, i) {
+      if (r.src && r.src === f) {
+        begin = begin === null ? i : begin
+        delete me.routes[i]
+      }
+    })
+
+    this.routes = this.routes.filter(function (r) {
+      return r !== undefined
+    })
+
+    let end = this.routes.length - 1
+
+    // Clear any cached associations
+    if (this.associations[f]) {
+      this.associations[f].forEach(function (dependentFile) {
+        if (require.cache.hasOwnProperty(dependentFile)) {
+          delete require.cache[dependentFile]
+        }
+      })
+    }
+
+    begin = begin === null ? end : begin
+    end = begin > end ? begin : end
+
+    this.createRoutes(f, [begin, end])
+
+    if (trigger) {
+      console.info('Routes reloaded. Triggered by', trigger.replace(process.cwd(), '.'))
+    } else {
+      console.info('Routes reloaded. Triggered by', f.replace(process.cwd(), '.'))
     }
   }
 
@@ -582,29 +675,15 @@ class HttpServer extends NGN.Server {
   }
 
   /**
-   * @method getModules
-   * Return the node modules that have been "required" in the app.
-   * @private
-   * @return {Array}
-   * A list of the modules be reference.
-   */
-  getModules() { // eslint-disable-line
-    // Get all of the required local modules (i.e. part of the project, not the core)
-    return Object.keys(require.cache).filter(function (p) {
-      return p.indexOf(process.cwd()) === 0 && p.indexOf('node_modules') < 0
-    }).map(function (p) {
-      return path.resolve(path.join(process.cwd(), p.replace(__dirname, '').replace(process.cwd(), '')))
-    })
-  }
-
-  /**
    * @method monitor
    * Monitor a file for file changes. This enables route hot-reloading.
    * @private
    * @param  {string} filepath
    * The path of the file to monitor.
+   * @param {string} [parent]
+   * Identifies the parent monitor when appropriate
    */
-  monitor(filepath) { // eslint-disable-line
+  monitor(filepath, parent) { // eslint-disable-line
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
       return
@@ -627,7 +706,14 @@ class HttpServer extends NGN.Server {
           me.reloadRoutes(f)
         })
         m.on('changed', function (f) {
-          me.reloadRoutes(f)
+          let roots = me.getAssociatedRoots(f)
+          if (roots.length === 0) {
+            me.reloadRoutes(f)
+          } else {
+            roots.forEach(function (r) {
+              me.reloadRoutes(r, f)
+            })
+          }
         })
         m.on('removed', function (f) {
           me.reloadRoutes(f)
@@ -640,36 +726,59 @@ class HttpServer extends NGN.Server {
       me.monitors[dir].files.push(filepath)
       console.log('Watching', filepath)
     }
+
+    this.deepmonitor(filepath)
   }
 
-  /**
-   * @method reloadRoutes
-   * Refresh the routes.
-   * @private
-   * @param  {string} filepath
-   * The path to reload routes from.
-   */
-  reloadRoutes(f) { // eslint-disable-line
+  deepmonitor(filepath) { // eslint-disable-line
     // If auto-refresh isn't active, ignore this.
     if (!this.refresh) {
       return
     }
 
     let me = this
+    let dir = path.dirname(filepath)
 
-    this.routes.forEach(function (r, i) {
-      if (r.src && r.src === f) {
-        delete me.routes[i]
+    this.modules.forEach(function (m) {
+      if (m.parent === filepath) {
+        // If the monitor already exists, modify the files
+        if (me.monitors.hasOwnProperty(path.dirname(m.path))) {
+          if (me.monitors[dir].files.indexOf(m.path) < 0) {
+            console.log('Watching', m.path)
+            me.monitors[dir].files.push(m.path)
+            me.associateWith(m.path, m.parent)
+            me.deepmonitor(m.path)
+          }
+        } else {
+          me.monitor(m.path, dir)
+        }
       }
     })
+  }
 
-    this.routes = this.routes.filter(function (r) {
-      return r !== undefined
+  associateWith(src, parent) { // eslint-disable-line
+    let me = this
+    let processed = false
+    Object.keys(this.associations).forEach(function (a) {
+      if (me.associations[a].indexOf(parent) >= 0) {
+        if (me.associations[a].indexOf(src) < 0) {
+          me.associations[a].push(src)
+          processed = true
+        }
+      }
     })
+    if (!processed) {
+      this.associations[parent] = this.associations[parent] || []
+      this.associations[parent].push(src)
+    }
+  }
 
-    this.createRoutes(f)
-
-    console.info('Routes reloaded. Triggered by', f.replace(process.cwd(), '.'))
+  getAssociatedRoots(filepath) { // eslint-disable-line
+    let me = this
+    let root = Object.keys(this.associations).filter(function (a) {
+      return me.associations[a].indexOf(filepath) >= 0
+    })
+    return root
   }
 
   /**

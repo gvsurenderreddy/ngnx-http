@@ -24,7 +24,7 @@ test('Basic Web Serving', function (t) {
     port: 0
   })
 
-  server.createRoutes('./test/files/routes')
+  server.createRoutes(require('./files/routes'))
 
   server.on('start', function () {
     t.ok(server.running, 'Server was started & is running.')
@@ -49,7 +49,6 @@ test('Basic Web Serving', function (t) {
         }
       }, function (_err, _r, _bod) {
         t.ok(_r.statusCode === 200, 'Received a POST response.')
-        console.log(_bod)
         t.ok(_bod.test === true, 'POST response sent readable JSON.')
         server.stop()
       })
@@ -77,7 +76,7 @@ test('CORS Support', function (t) {
     maxAge: 100000
   })
 
-  server.createRoutes('./test/files/routes')
+  server.createRoutes(require('./files/routes'))
 
   server.on('start', function () {
     request({
